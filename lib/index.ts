@@ -64,14 +64,14 @@ function init(modules: {typescript: typeof ts_module}) {
         const usf = ts.updateSourceFile;
         ts.createSourceFile = function (filename: string, sourceText: string, languageVersion: ts.ScriptTarget, setParentNodes?: boolean, scriptKind?: ts.ScriptKind) {
             info.project.projectService.logger.info('****** hooked createSourceFile *****');
+            let range: ts.TextRange;
             if (interested(filename)) {
-                // TODO: Cheat and expose the scanner instead, then replace the scanner.setText call
                 info.project.projectService.logger.info(`****** interested: ${filename} *****`);
-                //const start = sourceText.indexOf("<script>") === -1 ? 0 : sourceText.indexOf("<script>") + "<script>".length;
-                //const end = sourceText.indexOf("</script>");
-                //sourceText = sourceText.slice(start, end);
+                const pos = sourceText.indexOf("<script>") === -1 ? 0 : sourceText.indexOf("<script>") + "<script>".length;
+                const end = sourceText.indexOf("</script>");
+                range = { pos, end };
             }
-            var sourceFile = csf(filename, sourceText, languageVersion, setParentNodes, scriptKind, /*crazy*/ interested(filename));
+            var sourceFile = csf(filename, sourceText, languageVersion, setParentNodes, scriptKind, range);
             if (interested(filename)) {
                 modifyVueSource(sourceFile);
             }
