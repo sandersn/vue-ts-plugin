@@ -30,13 +30,10 @@ function init({ typescript: ts } : {typescript: typeof ts_module}) {
         // (by the way, replacing updateSourceFile doesn't seem to work)
         function updateLanguageServiceSourceFile(sourceFile: ts.SourceFile, scriptSnapshot: ts.IScriptSnapshot, version: string, textChangeRange: ts.TextChangeRange, aggressiveChecks?: boolean, range?: ts.TextRange): ts.SourceFile {
             logger.info(`*** hooked updateLanguageServiceSourceFile for ${sourceFile.fileName}`);
-            if (interested(sourceFile.fileName)) {
-                logger.info(`**** interested: ${sourceFile.fileName} *****`);
-            }
-            return ulssf(sourceFile, scriptSnapshot, version, textChangeRange, aggressiveChecks);
+            range = interested(sourceFile.fileName) ? parse(sourceFile.fileName, scriptSnapshot.getText(0, scriptSnapshot.getLength()), logger) : range;
+            return ulssf(sourceFile, scriptSnapshot, version, textChangeRange, aggressiveChecks, range);
         }
 
-        // TODO: First, make the proxy allow wrapping of createLanguageServiceSourceFile
         return { createLanguageServiceSourceFile, updateLanguageServiceSourceFile };
     }
 
