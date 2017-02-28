@@ -14,13 +14,16 @@ function init(modules: {typescript: typeof ts_module}) {
         return undefined;
     }
 
-    function modifyVueSource(sourceFile: ts.SourceFile): void {
+    function modifyVueSource(sourceFile: ts.SourceFile, logger: ts_module.server.Logger): void {
         // 1. add `import Vue from './vue'
         // 2. find the export default and wrap it in `new Vue(...)` if it exists and is an object literal
+        //logger.info(sourceFile.getStart() + "-" + sourceFile.getEnd());
         const exportDefaultObject = find(sourceFile.statements, st => st.kind === ts.SyntaxKind.ExportAssignment &&
                                          (st as ts.ExportAssignment).expression.kind === ts.SyntaxKind.ObjectLiteralExpression);
         var b = <T extends ts.Node>(n: T) => ts.setTextRange(n, { pos: 0, end: 0 });
+        //logger.info(sourceFile.statements.length.toString());
         if (exportDefaultObject) {
+            //logger.info(exportDefaultObject.toString());
             const vueImport = b(ts.createImportDeclaration(undefined,
                                                            undefined,
                                                            b(ts.createImportClause(undefined,
@@ -47,9 +50,10 @@ function init(modules: {typescript: typeof ts_module}) {
         // Get a list of things to remove from the completion list from the config object.
         // If nothing was specified, we'll just remove 'caller'
         const whatToRemove: string[] = info.config.remove || ['caller'];
+        const logger = info.project.projectService.logger;
 
         // Diagnostic logging
-        info.project.projectService.logger.info("This message will appear in your logfile if the plugin loaded correctly");
+        logger.info("This message will appear in your logfile if the plugin loaded correctly");
 
         // Set up decorator
         const proxy = Object.create(null) as ts.LanguageService;
@@ -60,28 +64,37 @@ function init(modules: {typescript: typeof ts_module}) {
             }
         }
 
-        const csf = ts.createSourceFile;
-        const usf = ts.updateSourceFile;
-        ts.createSourceFile = function (filename: string, sourceText: string, languageVersion: ts.ScriptTarget, setParentNodes?: boolean, scriptKind?: ts.ScriptKind) {
-            info.project.projectService.logger.info('****** hooked createSourceFile *****');
-            let range: ts.TextRange;
-            if (interested(filename)) {
-                info.project.projectService.logger.info(`****** interested: ${filename} *****`);
-                const pos = sourceText.indexOf("<script>") === -1 ? 0 : sourceText.indexOf("<script>") + "<script>".length;
-                const end = sourceText.indexOf("</script>");
+        const clssf = ts.createLanguageServiceSourceFile;
+        function replacement(fileName: string, scriptSnapshot: ts.IScriptSnapshot, scriptTarget: ts.ScriptTarget, version: string, setNodeParents: boolean, scriptKind?: ts.ScriptKind, range?: ts.TextRange): ts.SourceFile {
+            logger.info(`*** hooked createLanguageServiceSourceFile for ${fileName} *****`);
+            if (interested(fileName)) {
+                logger.info(`**** interested: ${fileName} *****`);
+                const text = scriptSnapshot.getText(0, scriptSnapshot.getLength());
+                const pos = text.indexOf("<scr"+"ipt>") === -1 ? 0 : text.indexOf("<scri"+"pt>") + ("<scr"+"ipt>").length;
+                const end = text.indexOf("</scri"+"pt>");
+                logger.info(`***** found text in range (${pos},${end})`); //:${text.slice(0,10)}...${text.slice(text.length - 10)} => ${text.slice(pos, pos + 10)}...${text.slice(end - 10, end)}`);
                 range = { pos, end };
             }
-            var sourceFile = csf(filename, sourceText, languageVersion, setParentNodes, scriptKind, range);
-            if (interested(filename)) {
-                modifyVueSource(sourceFile);
+            var sourceFile = clssf(fileName, scriptSnapshot, scriptTarget, version, setNodeParents, scriptKind, range);
+            if (interested(fileName)) {
+                logger.info(`***** post: ${sourceFile.getStart()}-${sourceFile.getEnd()}: ${sourceFile.getText().slice(sourceFile.getStart(), sourceFile.getStart() + 10)}`);
+                logger.info(`***** post: number of statements: ${sourceFile.statements.length}`);
+                modifyVueSource(sourceFile, logger);
             }
             return sourceFile;
         }
+        //(info.languageService as any).createLanguageServiceSourceFile = replacement;
+        ts.createLanguageServiceSourceFile = replacement;
+        //(proxy as any).createLanguageServiceSourceFile = replacement;
+
+        /*
+        const usf = ts.updateSourceFile;
         ts.updateSourceFile = function (sourcefile: ts.SourceFile, newText: string, textChangeRange: ts.TextChangeRange, aggressiveChecks?: boolean) {
             // hmmm looks like this one isn't really used
-            info.project.projectService.logger.info('****** hooked updateSourceFile *****');
+            logger.info('****** hooked updateSourceFile *****');
             return usf(sourcefile, newText, textChangeRange, aggressiveChecks);
         }
+        */
 
         return proxy;
     }
