@@ -3,31 +3,15 @@ import * as ts_module from "../node_modules/typescript/lib/tsserverlibrary";
 function init({ typescript: ts } : {typescript: typeof ts_module}) {
 
     function create(info: ts.server.PluginCreateInfo) {
-        // TODO: Maybe hook the document registry?
-        // or add methods to the language service host, onCreateSourceFile/onUpdateSourceFile and add them as before/after advice.
-        // but first, just try directly replacing the methods on ts!! yay!
-        // Or just try to allow replacement of createSourceFile
-        // Get a list of things to remove from the completion list from the config object.
-        // If nothing was specified, we'll just remove 'caller'
-        const whatToRemove: string[] = info.config.remove || ['caller'];
+        return info.languageService;
+    }
+
+    function changeSourceFiles(info: ts.server.PluginCreateInfo) {
         const logger = info.project.projectService.logger;
-
-        // Diagnostic logging
-        logger.info("This message will appear in your logfile if the plugin loaded correctly");
-
-        // Set up decorator
-        const proxy = Object.create(null) as ts.LanguageService;
-        const oldLS = info.languageService;
-        for (const k in oldLS) {
-            (proxy as any)[k] = function () {
-                return oldLS[k].apply(oldLS, arguments);
-            }
-        }
-
         const clssf = ts.createLanguageServiceSourceFile;
-        const usf = ts.updateSourceFile;
         const ulssf = ts.updateLanguageServiceSourceFile;
-        function replacement(fileName: string, scriptSnapshot: ts.IScriptSnapshot, scriptTarget: ts.ScriptTarget, version: string, setNodeParents: boolean, scriptKind?: ts.ScriptKind, range?: ts.TextRange): ts.SourceFile {
+        const usf = ts.updateSourceFile;
+        function createLanguageServiceSourceFile(fileName: string, scriptSnapshot: ts.IScriptSnapshot, scriptTarget: ts.ScriptTarget, version: string, setNodeParents: boolean, scriptKind?: ts.ScriptKind, range?: ts.TextRange): ts.SourceFile {
             logger.info(`*** hooked createLanguageServiceSourceFile for ${fileName} *****`);
             range = interested(fileName) ? parse(fileName, scriptSnapshot.getText(0, scriptSnapshot.getLength()), logger) : range;
             var sourceFile = clssf(fileName, scriptSnapshot, scriptTarget, version, setNodeParents, scriptKind, range);
@@ -36,18 +20,24 @@ function init({ typescript: ts } : {typescript: typeof ts_module}) {
             }
             return sourceFile;
         }
-        // TODO: First, make the proxy allow wrapping of createLanguageServiceSourceFile
-        ts.createLanguageServiceSourceFile = replacement;
-        //(proxy as any).createLanguageServiceSourceFile = replacement;
 
-        // TODO: Next figure out why this hook never fires, but editing still breaks
         ts.updateSourceFile = function(sourceFile: ts.SourceFile, newText: string, textChangeRange: ts.TextChangeRange, aggressiveChecks?: boolean) {
             logger.info(`*** hooked updateSourceFile for ${sourceFile.fileName}`);
             return usf(sourceFile, newText, textChangeRange, aggressiveChecks);
         };
 
-        function updacement(sourceFile: ts.SourceFile, scriptSnapshot: ts.IScriptSnapshot, version: string, textChangeRange: ts.TextChangeRange, aggressiveChecks?: boolean, range?: ts.TextRange): ts.SourceFile { return undefined; }
-        return proxy;
+        // TODO: Next fix this code so that it works
+        // (by the way, replacing updateSourceFile doesn't seem to work)
+        function updateLanguageServiceSourceFile(sourceFile: ts.SourceFile, scriptSnapshot: ts.IScriptSnapshot, version: string, textChangeRange: ts.TextChangeRange, aggressiveChecks?: boolean, range?: ts.TextRange): ts.SourceFile {
+            logger.info(`*** hooked updateLanguageServiceSourceFile for ${sourceFile.fileName}`);
+            if (interested(sourceFile.fileName)) {
+                logger.info(`**** interested: ${sourceFile.fileName} *****`);
+            }
+            return ulssf(sourceFile, scriptSnapshot, version, textChangeRange, aggressiveChecks);
+        }
+
+        // TODO: First, make the proxy allow wrapping of createLanguageServiceSourceFile
+        return { createLanguageServiceSourceFile, updateLanguageServiceSourceFile };
     }
 
     function interested(filename: string): boolean {
@@ -108,7 +98,7 @@ function init({ typescript: ts } : {typescript: typeof ts_module}) {
         return project.getFileNames().filter(interested);
     }
 
-    return { create, interested, getExternalFiles};
+    return { create, interested, getExternalFiles, changeSourceFiles };
 }
 
 export = init;
