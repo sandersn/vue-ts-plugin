@@ -1,7 +1,6 @@
 import * as ts_module from "../node_modules/typescript/lib/tsserverlibrary";
 
-function init(modules: {typescript: typeof ts_module}) {
-    const ts = modules.typescript;
+function init({ typescript: ts } : {typescript: typeof ts_module}) {
 
     function create(info: ts.server.PluginCreateInfo) {
         // TODO: Maybe hook the document registry?
@@ -26,6 +25,8 @@ function init(modules: {typescript: typeof ts_module}) {
         }
 
         const clssf = ts.createLanguageServiceSourceFile;
+        const usf = ts.updateSourceFile;
+        const ulssf = ts.updateLanguageServiceSourceFile;
         function replacement(fileName: string, scriptSnapshot: ts.IScriptSnapshot, scriptTarget: ts.ScriptTarget, version: string, setNodeParents: boolean, scriptKind?: ts.ScriptKind, range?: ts.TextRange): ts.SourceFile {
             logger.info(`*** hooked createLanguageServiceSourceFile for ${fileName} *****`);
             range = interested(fileName) ? parse(fileName, scriptSnapshot.getText(0, scriptSnapshot.getLength()), logger) : range;
@@ -35,10 +36,17 @@ function init(modules: {typescript: typeof ts_module}) {
             }
             return sourceFile;
         }
-        //(info.languageService as any).createLanguageServiceSourceFile = replacement;
+        // TODO: First, make the proxy allow wrapping of createLanguageServiceSourceFile
         ts.createLanguageServiceSourceFile = replacement;
         //(proxy as any).createLanguageServiceSourceFile = replacement;
 
+        // TODO: Next figure out why this hook never fires, but editing still breaks
+        ts.updateSourceFile = function(sourceFile: ts.SourceFile, newText: string, textChangeRange: ts.TextChangeRange, aggressiveChecks?: boolean) {
+            logger.info(`*** hooked updateSourceFile for ${sourceFile.fileName}`);
+            return usf(sourceFile, newText, textChangeRange, aggressiveChecks);
+        };
+
+        function updacement(sourceFile: ts.SourceFile, scriptSnapshot: ts.IScriptSnapshot, version: string, textChangeRange: ts.TextChangeRange, aggressiveChecks?: boolean, range?: ts.TextRange): ts.SourceFile { return undefined; }
         return proxy;
     }
 
@@ -96,7 +104,11 @@ function init(modules: {typescript: typeof ts_module}) {
         }
     }
 
-    return { create, interested };
+    function getExternalFiles(project: ts_module.server.ConfiguredProject) {
+        return project.getFileNames().filter(interested);
+    }
+
+    return { create, interested, getExternalFiles};
 }
 
 export = init;
