@@ -1,4 +1,5 @@
 import * as ts_module from "../node_modules/typescript/lib/tsserverlibrary";
+import { parseComponent } from 'vue-template-compiler';
 
 function init({ typescript: ts } : {typescript: typeof ts_module}) {
 
@@ -13,7 +14,7 @@ function init({ typescript: ts } : {typescript: typeof ts_module}) {
         const usf = ts.updateSourceFile;
         function createLanguageServiceSourceFile(fileName: string, scriptSnapshot: ts.IScriptSnapshot, scriptTarget: ts.ScriptTarget, version: string, setNodeParents: boolean, scriptKind?: ts.ScriptKind, range?: ts.TextRange): ts.SourceFile {
             logger.info(`*** hooked createLanguageServiceSourceFile for ${fileName} *****`);
-            range = interested(fileName) ? parse(fileName, scriptSnapshot.getText(0, scriptSnapshot.getLength()), logger) : range;
+            range = interested(fileName) ? parse(fileName, scriptSnapshot.getText(0, scriptSnapshot.getLength())) : range;
             var sourceFile = clssf(fileName, scriptSnapshot, scriptTarget, version, setNodeParents, scriptKind, range);
             if (interested(fileName)) {
                 modifyVueSource(sourceFile, logger);
@@ -30,7 +31,7 @@ function init({ typescript: ts } : {typescript: typeof ts_module}) {
         // (by the way, replacing updateSourceFile doesn't seem to work)
         function updateLanguageServiceSourceFile(sourceFile: ts.SourceFile, scriptSnapshot: ts.IScriptSnapshot, version: string, textChangeRange: ts.TextChangeRange, aggressiveChecks?: boolean, range?: ts.TextRange): ts.SourceFile {
             logger.info(`*** hooked updateLanguageServiceSourceFile for ${sourceFile.fileName}`);
-            range = interested(sourceFile.fileName) ? parse(sourceFile.fileName, scriptSnapshot.getText(0, scriptSnapshot.getLength()), logger) : range;
+            range = interested(sourceFile.fileName) ? parse(sourceFile.fileName, scriptSnapshot.getText(0, scriptSnapshot.getLength())) : range;
             if (range && textChangeRange) {
                 logger.info(`**** span: ${textChangeRange.span.start}+${textChangeRange.span.length} --> ${textChangeRange.newLength}`);
             }
@@ -49,14 +50,9 @@ function init({ typescript: ts } : {typescript: typeof ts_module}) {
         return filename.slice(filename.lastIndexOf('.')) === ".vue";
     }
 
-    const scriptStart = "<scr"+"ipt>";
-    const scriptEnd = "</scr"+"ipt>";
-    function parse(fileName: string, text: string, logger: ts_module.server.Logger) {
-        logger.info(`**** interested: ${fileName} *****`);
-        const pos = text.indexOf(scriptStart) === -1 ? -1 : text.indexOf(scriptStart) + (scriptStart).length;
-        const end = text.indexOf(scriptEnd);
-        logger.info(`***** found text in range (${pos},${end})`); //:${text.slice(0,10)}...${text.slice(text.length - 10)} => ${text.slice(pos, pos + 10)}...${text.slice(end - 10, end)}`);
-        return pos > -1 && end > -1 ? { pos, end } : undefined;
+    function parse(fileName: string, text: string) {
+        const output = parseComponent(text);
+        return output && output.script && { pos: output.script.start, end: output.script.end };
     }
 
     /** Works like Array.prototype.find, returning `undefined` if no element satisfying the predicate is found. */
