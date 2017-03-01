@@ -31,7 +31,14 @@ function init({ typescript: ts } : {typescript: typeof ts_module}) {
         function updateLanguageServiceSourceFile(sourceFile: ts.SourceFile, scriptSnapshot: ts.IScriptSnapshot, version: string, textChangeRange: ts.TextChangeRange, aggressiveChecks?: boolean, range?: ts.TextRange): ts.SourceFile {
             logger.info(`*** hooked updateLanguageServiceSourceFile for ${sourceFile.fileName}`);
             range = interested(sourceFile.fileName) ? parse(sourceFile.fileName, scriptSnapshot.getText(0, scriptSnapshot.getLength()), logger) : range;
-            return ulssf(sourceFile, scriptSnapshot, version, textChangeRange, aggressiveChecks, range);
+            if (range && textChangeRange) {
+                logger.info(`**** span: ${textChangeRange.span.start}+${textChangeRange.span.length} --> ${textChangeRange.newLength}`);
+            }
+            var sourceFile = ulssf(sourceFile, scriptSnapshot, version, textChangeRange, aggressiveChecks, range);
+            if (interested(sourceFile.fileName)) {
+                modifyVueSource(sourceFile, logger);
+            }
+            return sourceFile;
         }
 
         return { createLanguageServiceSourceFile, updateLanguageServiceSourceFile };
