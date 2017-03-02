@@ -1,6 +1,5 @@
 import * as ts_module from "../node_modules/typescript/lib/tsserverlibrary";
 import { parseComponent } from "vue-template-compiler";
-// argh I can't remember how to import node modules
 import path = require('path');
 declare var parseComponent: (text: string, options?: { pad?: boolean }) => {
     script: {
@@ -19,25 +18,25 @@ function init({ typescript: ts } : {typescript: typeof ts_module}) {
 
     function resolveModules(info: ts.server.PluginCreateInfo) {
         const logger = info.project.projectService.logger;
-        const rmn = ts.resolveModuleName;
-        return function (moduleName: string, containingFile: string, compilerOptions: ts.CompilerOptions, host: ts.ModuleResolutionHost, cache?: ts.ModuleResolutionCache): ts.ResolvedModuleWithFailedLookupLocations {
-            logger.info(`*** hooked resolveModuleName for ${moduleName}`);
-            if (importInterested(moduleName)) {
-                logger.info(`**** interested in ${moduleName} in ${containingFile}`);
-                return {
-                    resolvedModule: {
-                        // TODO: Figure out what Extension.Ts does and whether I need to add (1) external or (2) Vue
-                        // used in module resolution not in determining the content
-                        extension: ts_module.Extension.Ts,
-                        isExternalLibraryImport: true,
-                        resolvedFileName: path.join(path.dirname(containingFile), path.basename(moduleName)),
+        return (rmn: any) =>
+            (moduleName: string, containingFile: string, compilerOptions: ts.CompilerOptions, host: ts.ModuleResolutionHost, cache?: ts.ModuleResolutionCache) => {
+                logger.info(`*** hooked resolveModuleName for ${moduleName}`);
+                if (importInterested(moduleName)) {
+                    logger.info(`**** interested in ${moduleName} in ${containingFile}`);
+                    return {
+                        resolvedModule: {
+                            // TODO: Figure out what Extension.Ts does and whether I need to add (1) external or (2) Vue
+                            // used in module resolution not in determining the content
+                            extension: ts_module.Extension.Ts,
+                            isExternalLibraryImport: true,
+                            resolvedFileName: path.join(path.dirname(containingFile), path.basename(moduleName)),
+                        }
                     }
                 }
-            }
-            else {
-                return rmn(moduleName, containingFile, compilerOptions, host, cache);
-            }
-        };
+                else {
+                    return rmn(moduleName, containingFile, compilerOptions, host, cache);
+                }
+            };
     }
 
     function changeSourceFiles(info: ts.server.PluginCreateInfo) {
@@ -46,7 +45,6 @@ function init({ typescript: ts } : {typescript: typeof ts_module}) {
         const ulssf = ts.updateLanguageServiceSourceFile;
         const usf = ts.updateSourceFile;
         function createLanguageServiceSourceFile(fileName: string, scriptSnapshot: ts.IScriptSnapshot, scriptTarget: ts.ScriptTarget, version: string, setNodeParents: boolean, scriptKind?: ts.ScriptKind, cheat?: string): ts.SourceFile {
-            logger.info(`*** hooked createLanguageServiceSourceFile for ${fileName} *****`);
             cheat = interested(fileName) ? parse(fileName, scriptSnapshot.getText(0, scriptSnapshot.getLength())) : cheat;
             var sourceFile = clssf(fileName, scriptSnapshot, scriptTarget, version, setNodeParents, scriptKind, cheat);
             if (interested(fileName)) {
@@ -55,13 +53,7 @@ function init({ typescript: ts } : {typescript: typeof ts_module}) {
             return sourceFile;
         }
 
-        ts.updateSourceFile = function(sourceFile: ts.SourceFile, newText: string, textChangeRange: ts.TextChangeRange, aggressiveChecks?: boolean) {
-            logger.info(`*** hooked updateSourceFile for ${sourceFile.fileName}`);
-            return usf(sourceFile, newText, textChangeRange, aggressiveChecks);
-        };
-
         function updateLanguageServiceSourceFile(sourceFile: ts.SourceFile, scriptSnapshot: ts.IScriptSnapshot, version: string, textChangeRange: ts.TextChangeRange, aggressiveChecks?: boolean, cheat?: string): ts.SourceFile {
-            logger.info(`*** hooked updateLanguageServiceSourceFile for ${sourceFile.fileName}`);
             cheat = interested(sourceFile.fileName) ? parse(sourceFile.fileName, scriptSnapshot.getText(0, scriptSnapshot.getLength())) : cheat;
             if (cheat && textChangeRange) {
                 logger.info(`**** span: ${textChangeRange.span.start}+${textChangeRange.span.length} --> ${textChangeRange.newLength}`);
@@ -102,7 +94,7 @@ function init({ typescript: ts } : {typescript: typeof ts_module}) {
     }
 
     function modifyVueSource(sourceFile: ts.SourceFile, logger: ts_module.server.Logger): void {
-        logger.info(`***** post: number of statements: ${sourceFile.statements.length}`);
+        logger.info(`***** before insertion: number of statements: ${sourceFile.statements.length}`);
         // 1. add `import Vue from './vue'
         // 2. find the export default and wrap it in `new Vue(...)` if it exists and is an object literal
         //logger.info(sourceFile.getStart() + "-" + sourceFile.getEnd());
