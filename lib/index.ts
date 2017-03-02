@@ -45,8 +45,15 @@ function init({ typescript: ts } : {typescript: typeof ts_module}) {
         const ulssf = ts.updateLanguageServiceSourceFile;
         const usf = ts.updateSourceFile;
         function createLanguageServiceSourceFile(fileName: string, scriptSnapshot: ts.IScriptSnapshot, scriptTarget: ts.ScriptTarget, version: string, setNodeParents: boolean, scriptKind?: ts.ScriptKind, cheat?: string): ts.SourceFile {
-            cheat = interested(fileName) ? parse(fileName, scriptSnapshot.getText(0, scriptSnapshot.getLength())) : cheat;
-            var sourceFile = clssf(fileName, scriptSnapshot, scriptTarget, version, setNodeParents, scriptKind, cheat);
+            if (interested(fileName)) {
+                const wrapped = scriptSnapshot;
+                scriptSnapshot = {
+                    getChangeRange: old => wrapped.getChangeRange(old),
+                    getLength: () => wrapped.getLength(),
+                    getText: (start, end) => parse(fileName, wrapped.getText(0, wrapped.getLength())).slice(start, end),
+                };
+            }
+            var sourceFile = clssf(fileName, scriptSnapshot, scriptTarget, version, setNodeParents, scriptKind);
             if (interested(fileName)) {
                 modifyVueSource(sourceFile, logger);
             }
@@ -54,11 +61,18 @@ function init({ typescript: ts } : {typescript: typeof ts_module}) {
         }
 
         function updateLanguageServiceSourceFile(sourceFile: ts.SourceFile, scriptSnapshot: ts.IScriptSnapshot, version: string, textChangeRange: ts.TextChangeRange, aggressiveChecks?: boolean, cheat?: string): ts.SourceFile {
-            cheat = interested(sourceFile.fileName) ? parse(sourceFile.fileName, scriptSnapshot.getText(0, scriptSnapshot.getLength())) : cheat;
-            if (cheat && textChangeRange) {
-                logger.info(`**** span: ${textChangeRange.span.start}+${textChangeRange.span.length} --> ${textChangeRange.newLength}`);
+            if (interested(sourceFile.fileName)) {
+                if (textChangeRange) {
+                    logger.info(`**** span: ${textChangeRange.span.start}+${textChangeRange.span.length} --> ${textChangeRange.newLength}`);
+                }
+                const wrapped = scriptSnapshot;
+                scriptSnapshot = {
+                    getChangeRange: old => wrapped.getChangeRange(old),
+                    getLength: () => wrapped.getLength(),
+                    getText: (start, end) => parse(sourceFile.fileName, wrapped.getText(0, wrapped.getLength())).slice(start, end),
+                };
             }
-            var sourceFile = ulssf(sourceFile, scriptSnapshot, version, textChangeRange, aggressiveChecks, cheat);
+            var sourceFile = ulssf(sourceFile, scriptSnapshot, version, textChangeRange, aggressiveChecks);
             if (interested(sourceFile.fileName)) {
                 modifyVueSource(sourceFile, logger);
             }
