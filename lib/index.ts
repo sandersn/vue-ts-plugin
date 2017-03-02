@@ -1,5 +1,7 @@
 import * as ts_module from "../node_modules/typescript/lib/tsserverlibrary";
-import { parseComponent } from 'vue-template-compiler';
+import { parseComponent } from "vue-template-compiler";
+// argh I can't remember how to import node modules
+import path = require('path');
 declare var parseComponent: (text: string, options?: { pad?: boolean }) => {
     script: {
         start: number,
@@ -9,9 +11,33 @@ declare var parseComponent: (text: string, options?: { pad?: boolean }) => {
 };
 
 function init({ typescript: ts } : {typescript: typeof ts_module}) {
+    return { create, interested, getExternalFiles, changeSourceFiles, resolveModules };
 
     function create(info: ts.server.PluginCreateInfo) {
         return info.languageService;
+    }
+
+    function resolveModules(info: ts.server.PluginCreateInfo) {
+        const logger = info.project.projectService.logger;
+        const rmn = ts.resolveModuleName;
+        return function (moduleName: string, containingFile: string, compilerOptions: ts.CompilerOptions, host: ts.ModuleResolutionHost, cache?: ts.ModuleResolutionCache): ts.ResolvedModuleWithFailedLookupLocations {
+            logger.info(`*** hooked resolveModuleName for ${moduleName}`);
+            if (importInterested(moduleName)) {
+                logger.info(`**** interested in ${moduleName} in ${containingFile}`);
+                return {
+                    resolvedModule: {
+                        // TODO: Figure out what Extension.Ts does and whether I need to add (1) external or (2) Vue
+                        // used in module resolution not in determining the content
+                        extension: ts_module.Extension.Ts,
+                        isExternalLibraryImport: true,
+                        resolvedFileName: path.join(path.dirname(containingFile), path.basename(moduleName)),
+                    }
+                }
+            }
+            else {
+                return rmn(moduleName, containingFile, compilerOptions, host, cache);
+            }
+        };
     }
 
     function changeSourceFiles(info: ts.server.PluginCreateInfo) {
@@ -22,7 +48,6 @@ function init({ typescript: ts } : {typescript: typeof ts_module}) {
         function createLanguageServiceSourceFile(fileName: string, scriptSnapshot: ts.IScriptSnapshot, scriptTarget: ts.ScriptTarget, version: string, setNodeParents: boolean, scriptKind?: ts.ScriptKind, cheat?: string): ts.SourceFile {
             logger.info(`*** hooked createLanguageServiceSourceFile for ${fileName} *****`);
             cheat = interested(fileName) ? parse(fileName, scriptSnapshot.getText(0, scriptSnapshot.getLength())) : cheat;
-            logger.info(`*** ${cheat}`);
             var sourceFile = clssf(fileName, scriptSnapshot, scriptTarget, version, setNodeParents, scriptKind, cheat);
             if (interested(fileName)) {
                 modifyVueSource(sourceFile, logger);
@@ -35,8 +60,6 @@ function init({ typescript: ts } : {typescript: typeof ts_module}) {
             return usf(sourceFile, newText, textChangeRange, aggressiveChecks);
         };
 
-        // TODO: Next fix this code so that it works
-        // (by the way, replacing updateSourceFile doesn't seem to work)
         function updateLanguageServiceSourceFile(sourceFile: ts.SourceFile, scriptSnapshot: ts.IScriptSnapshot, version: string, textChangeRange: ts.TextChangeRange, aggressiveChecks?: boolean, cheat?: string): ts.SourceFile {
             logger.info(`*** hooked updateLanguageServiceSourceFile for ${sourceFile.fileName}`);
             cheat = interested(sourceFile.fileName) ? parse(sourceFile.fileName, scriptSnapshot.getText(0, scriptSnapshot.getLength())) : cheat;
@@ -53,9 +76,13 @@ function init({ typescript: ts } : {typescript: typeof ts_module}) {
         return { createLanguageServiceSourceFile, updateLanguageServiceSourceFile };
     }
 
+
     function interested(filename: string): boolean {
-        // if all we get is the content I could work with that too I guess
         return filename.slice(filename.lastIndexOf('.')) === ".vue";
+    }
+
+    function importInterested(filename: string): boolean {
+        return interested(filename) && filename.slice(0, 2) === "./";
     }
 
     function parse(fileName: string, text: string) {
@@ -105,8 +132,6 @@ function init({ typescript: ts } : {typescript: typeof ts_module}) {
     function getExternalFiles(project: ts_module.server.ConfiguredProject) {
         return project.getFileNames().filter(interested);
     }
-
-    return { create, interested, getExternalFiles, changeSourceFiles };
 }
 
 export = init;
