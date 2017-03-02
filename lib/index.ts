@@ -1,5 +1,12 @@
 import * as ts_module from "../node_modules/typescript/lib/tsserverlibrary";
 import { parseComponent } from 'vue-template-compiler';
+declare var parseComponent: (text: string, options?: { pad?: boolean }) => {
+    script: {
+        start: number,
+        end: number,
+        content: string
+    }
+};
 
 function init({ typescript: ts } : {typescript: typeof ts_module}) {
 
@@ -12,10 +19,11 @@ function init({ typescript: ts } : {typescript: typeof ts_module}) {
         const clssf = ts.createLanguageServiceSourceFile;
         const ulssf = ts.updateLanguageServiceSourceFile;
         const usf = ts.updateSourceFile;
-        function createLanguageServiceSourceFile(fileName: string, scriptSnapshot: ts.IScriptSnapshot, scriptTarget: ts.ScriptTarget, version: string, setNodeParents: boolean, scriptKind?: ts.ScriptKind, range?: ts.TextRange): ts.SourceFile {
+        function createLanguageServiceSourceFile(fileName: string, scriptSnapshot: ts.IScriptSnapshot, scriptTarget: ts.ScriptTarget, version: string, setNodeParents: boolean, scriptKind?: ts.ScriptKind, cheat?: string): ts.SourceFile {
             logger.info(`*** hooked createLanguageServiceSourceFile for ${fileName} *****`);
-            range = interested(fileName) ? parse(fileName, scriptSnapshot.getText(0, scriptSnapshot.getLength())) : range;
-            var sourceFile = clssf(fileName, scriptSnapshot, scriptTarget, version, setNodeParents, scriptKind, range);
+            cheat = interested(fileName) ? parse(fileName, scriptSnapshot.getText(0, scriptSnapshot.getLength())) : cheat;
+            logger.info(`*** ${cheat}`);
+            var sourceFile = clssf(fileName, scriptSnapshot, scriptTarget, version, setNodeParents, scriptKind, cheat);
             if (interested(fileName)) {
                 modifyVueSource(sourceFile, logger);
             }
@@ -29,13 +37,13 @@ function init({ typescript: ts } : {typescript: typeof ts_module}) {
 
         // TODO: Next fix this code so that it works
         // (by the way, replacing updateSourceFile doesn't seem to work)
-        function updateLanguageServiceSourceFile(sourceFile: ts.SourceFile, scriptSnapshot: ts.IScriptSnapshot, version: string, textChangeRange: ts.TextChangeRange, aggressiveChecks?: boolean, range?: ts.TextRange): ts.SourceFile {
+        function updateLanguageServiceSourceFile(sourceFile: ts.SourceFile, scriptSnapshot: ts.IScriptSnapshot, version: string, textChangeRange: ts.TextChangeRange, aggressiveChecks?: boolean, cheat?: string): ts.SourceFile {
             logger.info(`*** hooked updateLanguageServiceSourceFile for ${sourceFile.fileName}`);
-            range = interested(sourceFile.fileName) ? parse(sourceFile.fileName, scriptSnapshot.getText(0, scriptSnapshot.getLength())) : range;
-            if (range && textChangeRange) {
+            cheat = interested(sourceFile.fileName) ? parse(sourceFile.fileName, scriptSnapshot.getText(0, scriptSnapshot.getLength())) : cheat;
+            if (cheat && textChangeRange) {
                 logger.info(`**** span: ${textChangeRange.span.start}+${textChangeRange.span.length} --> ${textChangeRange.newLength}`);
             }
-            var sourceFile = ulssf(sourceFile, scriptSnapshot, version, textChangeRange, aggressiveChecks, range);
+            var sourceFile = ulssf(sourceFile, scriptSnapshot, version, textChangeRange, aggressiveChecks, cheat);
             if (interested(sourceFile.fileName)) {
                 modifyVueSource(sourceFile, logger);
             }
@@ -51,8 +59,8 @@ function init({ typescript: ts } : {typescript: typeof ts_module}) {
     }
 
     function parse(fileName: string, text: string) {
-        const output = parseComponent(text);
-        return output && output.script && { pos: output.script.start, end: output.script.end };
+        const output = parseComponent(text, { pad: true });
+        return output && output.script && output.script.content;
     }
 
     /** Works like Array.prototype.find, returning `undefined` if no element satisfying the predicate is found. */
