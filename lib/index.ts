@@ -1,7 +1,7 @@
 import * as ts_module from "../node_modules/typescript/lib/tsserverlibrary";
 import { parseComponent } from "vue-template-compiler";
 import path = require('path');
-declare var parseComponent: (text: string, options?: { pad?: boolean }) => {
+declare var parseComponent: (text: string, options?: { pad?: boolean | "line" | "space" }) => {
     script: {
         start: number,
         end: number,
@@ -92,7 +92,7 @@ function init({ typescript: ts } : {typescript: typeof ts_module}) {
     }
 
     function parse(fileName: string, text: string) {
-        const output = parseComponent(text, { pad: true });
+        const output = parseComponent(text, { pad: "space" });
         return output && output.script && output.script.content;
     }
 
