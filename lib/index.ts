@@ -1,49 +1,28 @@
 import * as ts_module from "../node_modules/typescript/lib/tsserverlibrary";
 import { parseComponent } from "vue-template-compiler";
 import path = require('path');
-declare var parseComponent: (text: string, options?: { pad?: boolean | "line" | "space" }) => {
-    script: {
-        start: number,
-        end: number,
-        content: string
-    }
-};
 
 function init({ typescript: ts } : {typescript: typeof ts_module}) {
-    return { create, interested, getExternalFiles, changeSourceFiles, resolveModules };
+    return { create, getExternalFiles };
 
     function create(info: ts.server.PluginCreateInfo) {
-        return info.languageService;
-    }
+        changeSourceFiles(info);
+        info.languageServiceHost.resolveModuleNames = (moduleNames, containingFile) => {
+            const options = info.languageServiceHost.getCompilationSettings();
+            return bifilterMap(moduleNames, importInterested,
+                               name => ({
+                                   resolvedFileName: path.join(path.dirname(containingFile), path.basename(name)),
+                                   extension: ts_module.Extension.Ts
+                               }),
+                               name => ts.resolveModuleName(name, containingFile, options, ts.sys).resolvedModule);
+        };
 
-    function resolveModules(info: ts.server.PluginCreateInfo) {
-        const logger = info.project.projectService.logger;
-        return (rmn: any) =>
-            (moduleName: string, containingFile: string, compilerOptions: ts.CompilerOptions, host: ts.ModuleResolutionHost, cache?: ts.ModuleResolutionCache) => {
-                logger.info(`*** hooked resolveModuleName for ${moduleName}`);
-                if (importInterested(moduleName)) {
-                    logger.info(`**** interested in ${moduleName} in ${containingFile}`);
-                    return {
-                        resolvedModule: {
-                            // TODO: Figure out what Extension.Ts does and whether I need to add (1) external or (2) Vue
-                            // used in module resolution not in determining the content
-                            extension: ts_module.Extension.Ts,
-                            isExternalLibraryImport: true,
-                            resolvedFileName: path.join(path.dirname(containingFile), path.basename(moduleName)),
-                        }
-                    }
-                }
-                else {
-                    return rmn(moduleName, containingFile, compilerOptions, host, cache);
-                }
-            };
+       return info.languageService;
     }
 
     function changeSourceFiles(info: ts.server.PluginCreateInfo) {
-        const logger = info.project.projectService.logger;
         const clssf = ts.createLanguageServiceSourceFile;
         const ulssf = ts.updateLanguageServiceSourceFile;
-        const usf = ts.updateSourceFile;
         function createLanguageServiceSourceFile(fileName: string, scriptSnapshot: ts.IScriptSnapshot, scriptTarget: ts.ScriptTarget, version: string, setNodeParents: boolean, scriptKind?: ts.ScriptKind, cheat?: string): ts.SourceFile {
             if (interested(fileName)) {
                 const wrapped = scriptSnapshot;
@@ -55,16 +34,13 @@ function init({ typescript: ts } : {typescript: typeof ts_module}) {
             }
             var sourceFile = clssf(fileName, scriptSnapshot, scriptTarget, version, setNodeParents, scriptKind);
             if (interested(fileName)) {
-                modifyVueSource(sourceFile, logger);
+                modifyVueSource(sourceFile);
             }
             return sourceFile;
         }
 
         function updateLanguageServiceSourceFile(sourceFile: ts.SourceFile, scriptSnapshot: ts.IScriptSnapshot, version: string, textChangeRange: ts.TextChangeRange, aggressiveChecks?: boolean, cheat?: string): ts.SourceFile {
             if (interested(sourceFile.fileName)) {
-                if (textChangeRange) {
-                    logger.info(`**** span: ${textChangeRange.span.start}+${textChangeRange.span.length} --> ${textChangeRange.newLength}`);
-                }
                 const wrapped = scriptSnapshot;
                 scriptSnapshot = {
                     getChangeRange: old => wrapped.getChangeRange(old),
@@ -74,12 +50,12 @@ function init({ typescript: ts } : {typescript: typeof ts_module}) {
             }
             var sourceFile = ulssf(sourceFile, scriptSnapshot, version, textChangeRange, aggressiveChecks);
             if (interested(sourceFile.fileName)) {
-                modifyVueSource(sourceFile, logger);
+                modifyVueSource(sourceFile);
             }
             return sourceFile;
         }
-
-        return { createLanguageServiceSourceFile, updateLanguageServiceSourceFile };
+        ts.createLanguageServiceSourceFile = createLanguageServiceSourceFile;
+        ts.updateLanguageServiceSourceFile = updateLanguageServiceSourceFile;
     }
 
 
@@ -107,8 +83,16 @@ function init({ typescript: ts } : {typescript: typeof ts_module}) {
         return undefined;
     }
 
-    function modifyVueSource(sourceFile: ts.SourceFile, logger: ts_module.server.Logger): void {
-        logger.info(`***** before insertion: number of statements: ${sourceFile.statements.length}`);
+    /** Maps elements with one of two functions depending on whether the predicate is true */
+    function bifilterMap<T, U>(l: T[], predicate: (t: T) => boolean, yes: (t: T) => U, no: (t: T) => U): U[] {
+        const result = [];
+        for (const x of l) {
+            result.push(predicate(x) ? yes(x) : no(x));
+        }
+        return result;
+    }
+
+    function modifyVueSource(sourceFile: ts.SourceFile): void {
         // 1. add `import Vue from './vue'
         // 2. find the export default and wrap it in `new Vue(...)` if it exists and is an object literal
         //logger.info(sourceFile.getStart() + "-" + sourceFile.getEnd());
@@ -119,12 +103,8 @@ function init({ typescript: ts } : {typescript: typeof ts_module}) {
             //logger.info(exportDefaultObject.toString());
             const vueImport = b(ts.createImportDeclaration(undefined,
                                                            undefined,
-                                                           b(ts.createImportClause(undefined,
-                                                                                   b(ts.createNamedImports([
-                                                                                       b(ts.createImportSpecifier(
-                                                                                           b(ts.createIdentifier("Vue")),
-                                                                                           b(ts.createIdentifier("Vue"))))])))),
-                                                           b(ts.createLiteral("./vue"))));
+                                                           b(ts.createImportClause(b(ts.createIdentifier("Vue")), undefined)),
+                                                           b(ts.createLiteral("vue"))));
             sourceFile.statements.unshift(vueImport);
             const obj = (exportDefaultObject as ts.ExportAssignment).expression as ts.ObjectLiteralExpression;
             (exportDefaultObject as ts.ExportAssignment).expression = ts.setTextRange(ts.createNew(ts.setTextRange(ts.createIdentifier("Vue"), { pos: obj.pos, end: obj.pos + 1 }),
