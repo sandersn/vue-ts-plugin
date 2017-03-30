@@ -1,6 +1,10 @@
-# TypeScript Language Service Plugin for View
+# TypeScript Language Service Plugin for Vue
 
-WARNING: This plugin is in an alpha state. It depends on unreleased extensions to the TypeScript plugin API that are not in master yet.
+WARNING: This plugin is in an alpha state. For a more polished
+experience,
+[try the VS Code plugin vetur](https://marketplace.visualstudio.com/items?itemName=octref.vetur).
+This plugin, however, works with the Typescript language service. So
+you can use it with whatever editor you want.
 
 This plugin does three things for Javascript and Typescript source in a `.vue` file:
 
@@ -9,36 +13,35 @@ This plugin does three things for Javascript and Typescript source in a `.vue` f
 3. It uses the Typescript language service to provide completions.
 
 It also resolves `import other from "other.vue";` statements in the same manner.
+It does *not* support completions in the `template` tag. It doesn't
+even support the `template` or `style` tags.
 
 ## Features left to add
 
-1. Finalise the new extension points on the plugin API.
-2. `import Vue from "vue"` not `"./vue"`
-3. Recognise ES5-style `module.exports = { ...` in addition to ES6 `export default { ...`.
-4. Update to vue-template-compiler's final `pad` option for `parseComponent`.
-5. Recognise only lang="javascript", lang="typescript" and no lang attribute. Others should not turn on the language service.
+1. Recognise ES5-style `module.exports = { ...` in addition to ES6 `export default { ...`.
+2. Recognise only lang="javascript", lang="typescript" and no lang attribute. Others should not turn on the language service.
 
-
-## Current instructions for emacs
-
-TODO: Add detail to each step.
-
-1. Clone typescript.
-2. Checkout and build the branch vue-plugin-WIP
-3. Set Tide to use your typescript instead of the provided one.
-4. From this repo, `$ npm link`
-5. From your vue repo, `$ npm link vue-ts-plugin`
-6. Add plugin to tsconfig.
-7. Set Tide to start `.vue` files in tide-mode.
-
-Now you have typescript support inside the script tags. HTML and CSS support are non-existent right now.
-
-I think that's it.
-
-## Future instructions for VS Code
-
-This is how it will work someday.
+## Instructions
 
 1. `$ npm install vue-ts-plugin`
 2. Add plugin to tsconfig.
-3. Install vetur extension for VS Code.
+
+```json
+{
+  compilerOptions: {
+    "allowSyntheticDefaultImports": true,
+    "plugins": [{ "name": "vue-ts-plugin" }]
+  }
+}
+```
+You will need "allowSyntheticDefaultImports" so that `import Vue from 'vue'` works.
+
+3. Set your editor to treat `.vue` files as Typescript.
+
+For example, in Emacs, add the line:
+
+```elisp
+(add-to-list 'auto-mode-alist '("\\.vue$" . typescript-mode))
+```
+
+Now you have typescript support inside the script tags. HTML and CSS support are non-existent right now.
