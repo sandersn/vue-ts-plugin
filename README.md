@@ -44,4 +44,6 @@ For example, in Emacs, add the line:
 (add-to-list 'auto-mode-alist '("\\.vue$" . typescript-mode))
 ```
 
+If you're Vim user, you can use [tsuquyomi-vue](https://github.com/Quramy/tsuquyomi-vue).
+
 Now you have typescript support inside the script tags. HTML and CSS support are non-existent right now.
